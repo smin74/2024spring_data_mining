@@ -1,0 +1,140 @@
+---
+title: "EX2"
+author: "Chenxin zhe, Evan Aldrich, Somin Lee"
+date: "2024-02-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(modelr)
+library(rsample)
+library(mosaic)
+library(foreach)
+library(caret)
+library(dplyr)
+library(gamlr)
+```
+
+#Q1
+## finding best linear model
+
+lm2 = base modeal (made in class)
+lm_a = get rid of insignificant variables fireplaces, fuel from lm2
+lm_b = lm_a + landvalue*newconstruction
+lm-c = lm_b + lotSize*landValue
+lm_d = lm_b + lotSize*livingArea
+lm_e = lm_b + landValue*livingArea
+
+```{r cars}
+data(SaratogaHouses)
+finding_best_lm = do(100)*{
+  saratoga_split = initial_split(SaratogaHouses, prop=0.8)
+  saratoga_train = training(saratoga_split)
+  saratoga_test = testing(saratoga_split)
+  
+  lm2 = lm(price ~ . - pctCollege - sewer - waterfront - landValue - newConstruction, data=saratoga_train)
+  rmse2 = rmse(lm2, saratoga_test)
+  
+  lm_a = lm(price ~ . - pctCollege - sewer - waterfront - landValue - newConstruction - fireplaces - fuel, data = saratoga_train)
+  rmse_a = rmse(lm_a, saratoga_test)
+  
+  lm_b = lm(price ~ . - pctCollege - sewer - waterfront - fireplaces - fuel +(landValue*newConstruction), data = saratoga_train)
+  rmse_b = rmse(lm_b, saratoga_test)
+  
+  lm_c = lm(price ~ . - pctCollege - sewer - waterfront - fireplaces - fuel +(landValue*(newConstruction+lotSize)), data = saratoga_train)
+  rmse_c = rmse(lm_c, saratoga_test)
+  
+  lm_d = lm(price ~ . - pctCollege - sewer - waterfront - fireplaces - fuel +(landValue*newConstruction) +(lotSize*livingArea), data = saratoga_train)
+  rmse_d = rmse(lm_d, saratoga_test)
+  
+  lm_e = lm(price ~ . - pctCollege - sewer - waterfront - fireplaces - fuel +(landValue*(newConstruction+livingArea)), data = saratoga_train)
+  rmse_e = rmse(lm_e, saratoga_test)
+  
+  
+  c(rmse2,rmse_a,rmse_b,rmse_c,rmse_d,rmse_e)
+}
+
+a = data.frame(colMeans(finding_best_lm))
+rownames(a) <- c("lm2","lm_a","lm_b","lm_c","lm_d","lm_e")
+colnames(a) <- "Avg of RMSE"
+a
+```
+
+#compare knn model and best linear model
+at first, find best k 
+
+```{r pressure, echo=FALSE}
+#(1) find optimal K
+knn_saratoga_split = initial_split(SaratogaHouses, prop = 0.8)
+knn_saratoga_train = training(knn_saratoga_split)
+knn_saratoga_test = testing(knn_saratoga_split)
+
+## construct the training and test set feature matrices
+Xtrain = model.matrix(~ . - pctCollege - sewer - waterfront - fireplaces - fuel - 1, data=knn_saratoga_train)
+Xtest = model.matrix(~ . - pctCollege - sewer - waterfront - fireplaces - fuel - 1, data=knn_saratoga_test)
+
+ytrain = knn_saratoga_train$price
+ytest = knn_saratoga_test$price
+
+## rescale using training set scales
+scale_train = apply(Xtrain, 2, sd)
+Xtilde_train = scale(Xtrain, scale=scale_train)%>%as.data.frame()
+Xtilde_test = scale(Xtest, scale=scale_train)%>%as.data.frame()
+
+## set the grid of k 
+k_grid=2:150
+
+## loop to get rmse for each k value
+smallest_k = foreach(i = k_grid, .combine='c') %do% {
+  knn_k=knnreg(price ~ age, data=Xtilde_train, k=i)
+  rmse_k=rmse(knn_k,Xtilde_test)
+  }%>% as.data.frame()
+
+# find k value which has the minimum value of rmse
+best_k=which(smallest_k == min(smallest_k))
+
+best_k
+```
+
+let's compare knn model and best linear model(lm_b)
+```{r}
+#(2) compare LM and KNN
+
+compare_two_model= do(50)*{
+  compare_two_split = initial_split(SaratogaHouses, prop = 0.8)
+  compare_two_train = training(compare_two_split)
+  compare_two_test = testing(compare_two_split)
+  
+  Xtrain=model.matrix(~ . - pctCollege - sewer - waterfront - fireplaces - fuel - 1, data=compare_two_train)
+  Xtest=model.matrix(~ . - pctCollege - sewer - waterfront - fireplaces - fuel - 1, data=compare_two_test)
+  
+  ytrain=compare_two_train$price
+  ytest=compare_two_test$price
+  
+  scale_train = apply(Xtrain, 2, sd)
+  Xtilde_train = scale(Xtrain, scale=scale_train)
+  Xtilde_test = scale(Xtest, scale=scale_train)
+  
+  Xtilde_train = Xtilde_train %>% as.data.frame()
+  Xtilde_test = Xtilde_test %>% as.data.frame()
+  
+  knn_compare=knnreg(price ~ ., data=compare_two_train, k=best_k)
+  rmse(knn_compare,compare_two_test)
+  
+  
+  lm_compare = lm(price ~ . - pctCollege - sewer - waterfront - fireplaces - fuel +(landValue*newConstruction), data=compare_two_train)
+  rmse(lm_compare,compare_two_test)
+  
+  c(rmse(knn_compare,compare_two_test),rmse(lm_compare,compare_two_test))
+  
+}
+
+b <- data.frame(colMeans(compare_two_model))
+rownames(b) <- c("KNN","Linear model")
+colnames(b) <- "Avg of RMSE"
+b
+```
