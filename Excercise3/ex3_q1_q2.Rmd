@@ -1,0 +1,113 @@
+---
+title: "ex3_q1,12"
+author: "Chenxin zhu, Evan Aldrich, Somin Lee"
+date: "2024-03-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(modelr)
+library(mosaic)
+library(foreach)
+library(dplyr)
+library(tidyverse)
+library(rpart)
+library(rpart.plot)
+library(rsample) 
+library(randomForest)
+library(lubridate)
+library(modelr)
+library(gbm)
+library(pdp)
+library(ggmap)
+
+```
+
+#Q1.What causes what?
+
+##1
+We can’t get causation by regressing one equation. For example, there can be a third variable that causes crime to decline and police to increase. In that case, we estimate a negative coefficient when we regress crime on police, but it is due to the third variable, not because the police cause crime to decrease.
+
+##2
+High alert day is a instrument variable to police because it is highly correlated with police(=instrument relevance) but not affected others such as the number of people on the street. (They checked there is no ridership decline in high alert day, instrument exogeneity). In the table, model(1) represents that the number of crimes in DC decline by 7.3 in high alert day, and model(2) shows that the number of crimes diminish by 6.0 holding all else fixed(it means that controlling for the ridership)
+
+##3
+Metro ridership represents the number of people who can be targeted by crime. If it is not controlled for, we can sort out whether the number of crimes declines due to the police or due to a decrease in the number of people on the street who can be victims of crime.
+
+##4
+In the model, the table shows the result of the regression the daily total number of crimes on 3 explanatory variables. The explanatory variables are dummy variables of High alert(or not), District 1(or not), and one continuous variable log(ridership), and the model use the interaction term between 2 dummy variables and log(ridership). When high alert(=1), the number of crimes decrease by about 2.6 in District 1 compared to other district, holding all else fixed. But the result of it in other districts, -0.57, is not statistically significant. Therefore, the number of crimes in district 1 in High alert day is 2.61 lower than that of other districts, holding all else fixed.
+
+```{r cars}
+```
+
+#Q2. Tree modeling : Dengue cases
+
+##(1)CART : I include all variables in the data set.
+
+```{r pressure, echo=FALSE}
+str(dengue)
+dengue=na.omit(dengue)
+dengue$city = factor(dengue$city)
+dengue$season = factor(dengue$season)
+
+dengue_split = initial_split(dengue, prop=0.8)
+dengue_train = training(dengue_split)
+dengue_test = testing(dengue_split)
+
+tree_cart_big=rpart(total_cases ~ . , data=dengue_train, control=rpart.control(cp=0.0015, minsplit=30)) 
+rpart.plot(tree_cart_big, digits=-5, type=4, extra=1)
+a= rmse(tree_cart_big, dengue_test)
+```
+
+Let's prune our tree at the 1se complexity level. It is the application of the 1SE rule to pick a tree that is simple but whose performance is not discernably different from the best performer
+
+```{r}
+prune_1se = function(my_tree) {
+  out = as.data.frame(my_tree$cptable)
+  thresh = min(out$xerror + out$xstd)
+  cp_opt = max(out$CP[out$xerror <= thresh])
+  prune(my_tree, cp=cp_opt)
+}
+
+tree_cart_prune1se = prune_1se(tree_cart_big)
+rpart.plot(tree_cart_prune1se, digits=-5, type=4, extra=1)
+b= rmse(tree_cart_prune1se, dengue_test)
+
+```
+tree_cart_big is the best cart model compared to pruned one.
+(rmse : (tree_cart_big < tree_cart_prune1se))
+
+##(2)random forest 
+random forests are effective, fast and require little or no tuning via CV, default settings do well.
+```{r}
+tree_rforests = randomForest(total_cases ~ . , data=dengue_train, important=TRUE)
+c= rmse(tree_rforests, dengue_test)
+varImpPlot(tree_rforests)
+```
+
+##(3)gradient-boosted tree
+```{r}
+tree_boosted= gbm(total_cases ~ . , data=dengue_train,interaction.depth=4, n.trees=500, shrinkage=.05, cv.folds = 5) 
+gbm.perf(tree_boosted) #error curve
+d= rmse(tree_boosted,dengue_test)
+```
+
+##(4)compare the models 
+```{r}
+rmse_compare = c(a,c,d)%>%as.data.frame()
+rownames(rmse_compare) <- c("cart_big","random forest","boosted")
+colnames(rmse_compare) <- "RMSE"
+rmse_compare
+```
+
+##(5)partial plot
+```{r}
+partialPlot(tree_rforests, dengue_test, 'specific_humidity')
+partialPlot(tree_rforests, dengue_test, 'precipitation_amt')
+partialPlot(tree_rforests, dengue_test, 'min_air_temp_k')
+
+```
+
