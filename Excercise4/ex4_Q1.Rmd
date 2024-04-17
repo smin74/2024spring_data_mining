@@ -1,0 +1,79 @@
+---
+title: "ex4"
+author: "Chenxin zhu, Evan Aldrich, Somin Lee"
+date: "2024-04-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+```
+
+#Q1. Clustering and PCA
+We're going to compare PCA and K-means clustering, focusing on which dimensionality reduction technique is more capable of distinguishing the color and quality of wine. We'll focus on two components and clusters to make it easy to compare using plot.
+
+##1. PCA
+We run PCA with four principal components, which have about 73% of the cumulative variance. It means intuitively that these four components have about 73% information about the original data. 
+```{r cars}
+wine = read.csv('/Users/sominlee/Documents/1.ut/3. 2024_spring/2. data mining/2. exercise/ex_04/wine.csv')
+# Center and scale the data
+X = wine[,-(12:13)]
+X = scale(X, center=TRUE, scale=TRUE)
+
+pca_1 = prcomp(X, rank=4, scale=TRUE)
+loadings = pca_1$rotation
+scores = pca_1$x
+summary(pca_1)
+```
+
+Also, we can find the loading of the component, and it reflects what the principal components are composed of.
+```{r}
+print(pca_1$rotation)
+```
+
+The first two components, which have the biggest variance, seem to distinguish the color of the wine well; they are almost separated; the right (upper) part of the black line represents white wine, and the left (lower) part seems to represent red wine.
+```{r}
+qplot(scores[,1], scores[,2], color=wine$color)+labs(x='Component 1', y='Component 2', title = 'Wine color distribution with principal component')+ geom_abline(slope = -3, intercept = -3.5)
+
+```
+However, it is hard to distinguish wine quality from the principal components. It doesn't show gradation, but various colors—that is, wines of different quality—are scattered around.
+```{r}
+qplot(scores[,1], scores[,2], color=wine$quality)+labs(x='Component 1', y='Component 2', title = 'Wine quality distribution with principal component')
+```
+
+##2. K-means clustering
+We checked some combinations of chemicals, and found that "total sulfur dioxide" and "fixed acidity" might be largely reflected to the clusters that we make. Even though we do not know what the clusters are, wines are well-distinguished by the clusters on the plot with this two chemicals.
+The figure below represents that cluster 1 is mainly spread horizontally on x-axis, and cluster 2 is vertically situated.
+
+```{r}
+
+# Extract the centers and scales from the rescaled data (which are named attributes)
+mu = attr(X,"scaled:center")
+sigma = attr(X,"scaled:scale")
+# Run k-means with 2 clusters and 25 starts
+clust_1 = kmeans(X, 2, nstart = 25)
+
+# total.sulfur.dioxide and fixed.acidity
+ggplot(wine) + 
+  geom_point(alpha = 0.5, aes(total.sulfur.dioxide, fixed.acidity, shape = factor(clust_1$cluster)))+
+  labs(x ="total.sulfur.dioxide", y ="fixed.acidity ", title = "Cluster distribution with total sulfur dioxide and fixed acidity ")+ geom_abline(slope = 0.08, intercept = 2.4)
+```
+According to the figure below, the color of wine is well-distinguished by these two clusters, and red is close to cluster 2 and white is similar to cluster 1. Therefore, it seems K-means clustering is capable of distinguishing the color of wine.
+
+```{r pressure, echo=FALSE}
+# total.sulfur.dioxide and fixed.acidity with wine color
+ggplot(wine) + 
+  geom_point(alpha = 0.5, aes(total.sulfur.dioxide, fixed.acidity, color = color , shape=factor(clust_1$cluster)))+
+  labs(x ="total.sulfur.dioxide", y ="fixed.acidity sugar", title = "Distribution of wine color with cluster")+ geom_abline(slope = 0.08, intercept = 2.4)
+```
+
+The plot below shows the distribution of wine quality, and it is so difficult to find any direction of color change that it is hard to distinguish the quality of wine.
+
+```{r}
+ggplot(wine) + 
+  geom_point(alpha = 0.7, aes(total.sulfur.dioxide, fixed.acidity, color = quality, shape=factor(clust_1$cluster)))+ 
+  labs( title = "Distribution of wine quality with cluster")
+```
+As a result, PCA is better at distinguishing the color of wine since it separates wines more clearly and with less overlap than k-means clustering. However, k-means is not bad at separating, so we can guess that the color of wine is closely related to the chemicals in the data. On the other hand, both PCA and K-men clustering are not capable of distinguishing the quality of wine.
